@@ -408,7 +408,64 @@ AC_CustomControl_PDPitch::AC_CustomControl_PDPitch(AC_CustomControl& frontend, A
 // return roll, pitch, yaw controller output
 Vector3f AC_CustomControl_PDPitch::update(void)
 {
-    Vector3f motor_out;
+    // reset controller based on spool state
+    switch (_motors->get_spool_state()) {
+        case AP_Motors::SpoolState::SHUT_DOWN:
+        case AP_Motors::SpoolState::GROUND_IDLE:
+            // We are still at the ground. Reset custom controller to avoid
+            // build up, ex: integrator
+            reset();
+            break;
+
+        case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
+        case AP_Motors::SpoolState::SPOOLING_UP:
+        case AP_Motors::SpoolState::SPOOLING_DOWN:
+            // we are off the ground
+            break;
+    }
+
+    //CUSTOM CONTROLLER
+    //Current body frame quaternion
+     Quaternion attitude_body, attitude_target;
+    _ahrs->get_quat_body_to_ned(attitude_body);
+
+    //Target Frame quaternion 
+    attitude_target = _att_control->get_attitude_target_quat();
+    
+    // This vector represents the angular error to rotate the thrust vector using x and y and heading using z
+    Vector3f attitude_error;
+    // Current thrust angle, Angle between target thrust and current thrust angle 
+    float _thrust_angle, _thrust_error_angle; 
+    //Calculates the attitude error from attitude target frame and body frame quaternion
+    _att_control->thrust_heading_rotation_angles(attitude_target, attitude_body, attitude_error, _thrust_angle, _thrust_error_angle);
+    
+    // recalculate ang vel feedforward from attitude target model
+    // rotation from the target frame to the body frame
+    Quaternion rotation_target_to_body = attitude_body.inverse() * attitude_target;
+
+    // target angle velocity vector in the body frame
+    Vector3f ang_vel_body_feedforward = rotation_target_to_body * _att_control->get_attitude_target_ang_vel();
+
+    // run attitude controller
+    Vector3f target_rate;
+    target_rate = update_ang_vel_target_from_att_error(attitude_error);
+
+    _att_control->ang_vel_limit(target_rate, _att_control->get_ang_vel_roll_max_rads(), _att_control->get_ang_vel_pitch_max_rads(), _att_control->get_ang_vel_yaw_max_rads());
+       
+    // Correct the thrust vector and smoothly add feedforward and yaw input
+    float _feedforward_scalar = 1.0f;
+    if (_thrust_error_angle > AC_ATTITUDE_THRUST_ERROR_ANGLE) {
+        _feedforward_scalar = (1.0f - (_thrust_error_angle - AC_ATTITUDE_THRUST_ERROR_ANGLE) / AC_ATTITUDE_THRUST_ERROR_ANGLE);
+        target_rate.y += ang_vel_body_feedforward.y * _feedforward_scalar;
+    } 
+    else 
+    {
+        target_rate.y += ang_vel_body_feedforward.y;
+    }
+
+    // run rate controller
+    Vector3f motor_out = run_rate_controller(target_rate);
+
     return motor_out;
 }
 
@@ -425,6 +482,26 @@ Vector3f AC_CustomControl_PDPitch::run_rate_controller(const Vector3f& target_ra
 Vector3f AC_CustomControl_PDPitch::update_ang_vel_target_from_att_error(const Vector3f &attitude_error_rot_vec_rad)
 {
     Vector3f rate_target_ang_vel;
+    Vector3f _angle_P_scale = _att_control->get_last_angle_P_scale();
+
+     // Compute the pitch angular velocity demand from the pitch angle error
+    const float angleP_pitch = _p_angle_pitch2.kP() * _angle_P_scale.y;
+    if (_use_sqrt_controller && !is_zero(_att_control->get_accel_pitch_max_radss())) {
+        rate_target_ang_vel.y = sqrt_controller(attitude_error_rot_vec_rad.y, angleP_pitch, constrain_float(_att_control->get_accel_pitch_max_radss() / 2.0f, AC_ATTITUDE_ACCEL_RP_CONTROLLER_MIN_RADSS, AC_ATTITUDE_ACCEL_RP_CONTROLLER_MAX_RADSS), _dt);
+    } 
+    else 
+    {
+        rate_target_ang_vel.y = _p_angle_pitch2.update_error(attitude_error_rot_vec_rad.y,_dt,false);
+    }
+
+    //X and Z rates are controlled by default attitude controller. Hence set to 0
+    rate_target_ang_vel.x = 0;
+    rate_target_ang_vel.z = 0;
+
+
+    // reset angle P scaling, saving used value
+    _angle_P_scale = _att_control->VECTORF_111;
+
     return rate_target_ang_vel;
 }
 
