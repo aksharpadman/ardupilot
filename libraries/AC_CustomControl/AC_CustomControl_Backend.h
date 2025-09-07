@@ -26,6 +26,10 @@ public:
     // set the PID notch sample rates
     virtual void set_notch_sample_rate(float sample_rate) {};
 
+#if HAL_LOGGING_ENABLED
+    virtual void Write_Log(){};
+#endif
+
 protected:
     // References to external libraries
     AP_AHRS_View*& _ahrs;
