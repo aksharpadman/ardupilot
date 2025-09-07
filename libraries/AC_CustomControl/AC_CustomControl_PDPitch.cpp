@@ -1,5 +1,6 @@
 #include "AC_CustomControl_PDPitch.h"
 #include "AC_AttitudeControl/AC_AttitudeControl_Multi.h"
+#include "LogStructure.h"
 
 #define AC_CONTROL_PITCH_D 0.1
 
@@ -509,6 +510,7 @@ Vector3f AC_CustomControl_PDPitch::update_ang_vel_target_from_att_error(const Ve
 #if HAL_LOGGING_ENABLED
 void AC_CustomControl_PDPitch::Write_Log()
 {
+    AP::logger().Write_PID(LOG_CCPD_MSG, _p_angle_pitch2.get_pid_info());
 
 }
 #endif
