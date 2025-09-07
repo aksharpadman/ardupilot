@@ -415,7 +415,9 @@ Vector3f AC_CustomControl_PDPitch::update(void)
 //Runs rate controller. Calculates only pitch rate. Ignore roll and yaw rate values
 Vector3f AC_CustomControl_PDPitch::run_rate_controller(const Vector3f& target_rate)
 {
+    Vector3f gyro_latest = _ahrs->get_gyro_latest();
     Vector3f _motor_out;
+    _motor_out.y = _pid_atti_rate_pitch.update_all(target_rate[1], gyro_latest[1], _dt,_motors->limit.pitch);
     return _motor_out;
 }
 
