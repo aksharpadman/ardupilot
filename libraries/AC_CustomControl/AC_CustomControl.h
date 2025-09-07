@@ -13,7 +13,7 @@
 #if AP_CUSTOMCONTROL_ENABLED
 
 #ifndef CUSTOMCONTROL_MAX_TYPES
-#define CUSTOMCONTROL_MAX_TYPES 2
+#define CUSTOMCONTROL_MAX_TYPES 3
 #endif
 
 class AC_CustomControl_Backend;
@@ -31,7 +31,9 @@ public:
     void reset_main_att_controller(void);
     bool is_safe_to_run(void);
     void log_switch(void);
-
+#if HAL_LOGGING_ENABLED
+    void Write_Log();
+#endif
     // set the PID notch sample rates
     void set_notch_sample_rate(float sample_rate);
 
@@ -48,6 +50,7 @@ protected:
         CONT_NONE            = 0,
         CONT_EMPTY           = 1,
         CONT_PID             = 2,
+        CONT_PDPITCH         = 3,
     };            // controller that should be used     
 
     enum class  CustomControlOption {
